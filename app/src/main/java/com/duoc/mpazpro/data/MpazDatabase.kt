@@ -8,7 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Usuario::class, RevisionUtp::class, ConfiguracionDocente::class],
+    entities = [Usuario::class, RevisionUtp::class, ConfiguracionDocente::class,
+        Actividad::class, RegistroProgreso::class],
     version = 3,
     exportSchema = false
 )
@@ -17,6 +18,7 @@ abstract class MpazDatabase : RoomDatabase() {
     abstract fun usuarioDao(): UsuarioDao
     abstract fun revisionUtpDao(): RevisionUtpDao
     abstract fun configuracionDocenteDao(): ConfiguracionDocenteDao
+    abstract fun actividadDao(): ActividadDao
 
     companion object {
         @Volatile
