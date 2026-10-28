@@ -99,7 +99,8 @@ class MainActivity : ComponentActivity() {
                                                 pantalla = "panel"
                                             }
                                         } catch (e: Exception) {
-                                            mensaje = "No se pudo iniciar sesión. Inténtalo nuevamente."
+                                            mensaje =
+                                                "No se pudo iniciar sesión. Inténtalo nuevamente."
                                         } finally {
                                             cargando = false
                                         }
@@ -141,7 +142,8 @@ class MainActivity : ComponentActivity() {
                                                 pantalla = "login"
                                             }
                                         } catch (e: Exception) {
-                                            mensaje = "No se pudo crear la cuenta. Inténtalo nuevamente."
+                                            mensaje =
+                                                "No se pudo crear la cuenta. Inténtalo nuevamente."
                                         } finally {
                                             cargando = false
                                         }
@@ -290,10 +292,8 @@ fun PantallaLogin(
         if (mensaje.isNotBlank()) {
             Text(
                 text = mensaje,
-                color = if (mensaje.contains(
-                        "bienvenido",
-                        ignoreCase = true
-                    )
+                color = if (
+                    mensaje.contains("bienvenido", ignoreCase = true)
                 ) {
                     MaterialTheme.colorScheme.primary
                 } else {
@@ -353,9 +353,7 @@ fun PantallaRegistro(
     var correo by remember { mutableStateOf("") }
     var contrasena by remember { mutableStateOf("") }
 
-    var rol by remember {
-        mutableStateOf("Estudiante")
-    }
+    var rol by remember { mutableStateOf("Estudiante") }
 
     val roles = listOf(
         "Estudiante",
@@ -450,10 +448,8 @@ fun PantallaRegistro(
         if (mensaje.isNotBlank()) {
             Text(
                 text = mensaje,
-                color = if (mensaje.contains(
-                        "correctamente",
-                        ignoreCase = true
-                    )
+                color = if (
+                    mensaje.contains("correctamente", ignoreCase = true)
                 ) {
                     MaterialTheme.colorScheme.primary
                 } else {
@@ -896,21 +892,27 @@ fun PantallaPanel(
     onCerrarSesion: () -> Unit
 ) {
     var pantallaEstudiante by remember { mutableStateOf("asignaturas") }
-    var asignaturaSeleccionada by remember { mutableStateOf<AsignaturaEducativa?>(null) }
-    var unidadSeleccionada by remember { mutableStateOf<UnidadEducativa?>(null) }
+    var asignaturaSeleccionada by remember {
+        mutableStateOf<AsignaturaEducativa?>(null)
+    }
+    var unidadSeleccionada by remember {
+        mutableStateOf<UnidadEducativa?>(null)
+    }
 
     var preguntaActual by remember { mutableIntStateOf(0) }
     var respuestaSeleccionada by remember { mutableStateOf<Int?>(null) }
     var puntaje by remember { mutableIntStateOf(0) }
     var respondidas by remember { mutableStateOf(false) }
+    var esPrueba1 by remember { mutableStateOf(false) }
 
     val asignaturas = remember { obtenerAsignaturasEducativas() }
 
-    fun reiniciarActividad() {
+    fun reiniciarActividad(esPrueba: Boolean = false) {
         preguntaActual = 0
         respuestaSeleccionada = null
         puntaje = 0
         respondidas = false
+        esPrueba1 = esPrueba
         pantallaEstudiante = "actividad"
     }
 
@@ -922,13 +924,12 @@ fun PantallaPanel(
         respuestaSeleccionada = null
         puntaje = 0
         respondidas = false
+        esPrueba1 = false
     }
 
     fun volverUnaPantalla() {
         when (pantallaEstudiante) {
-            "unidades" -> {
-                volverAAsignaturas()
-            }
+            "unidades" -> volverAAsignaturas()
 
             "contenido" -> {
                 pantallaEstudiante = "unidades"
@@ -950,6 +951,7 @@ fun PantallaPanel(
                 respuestaSeleccionada = null
                 puntaje = 0
                 respondidas = false
+                esPrueba1 = false
             }
 
             else -> volverAAsignaturas()
@@ -1053,6 +1055,7 @@ fun PantallaPanel(
                                     respuestaSeleccionada = null
                                     puntaje = 0
                                     respondidas = false
+                                    esPrueba1 = false
                                     pantallaEstudiante = "unidades"
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -1062,10 +1065,29 @@ fun PantallaPanel(
                         }
                     }
                 }
-            } else if (usuario.rol == "Administrador pedagógico (UTP)") {
-                PantallaUTP(asignaturas = asignaturas)
             } else {
-                PantallaDocente(asignaturas = asignaturas)
+                // Conectar las pantallas funcionales existentes.
+                when (usuario.rol) {
+                    "Docente" -> {
+                        PantallaDocente(
+                            asignaturas = asignaturas
+                        )
+                    }
+
+                    "Administrador pedagógico (UTP)" -> {
+                        PantallaUTP(
+                            asignaturas = asignaturas
+                        )
+                    }
+
+                    else -> {
+                        Text(
+                            "Rol no reconocido.",
+                            fontSize = 18.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
             }
         } else {
             OutlinedButton(
@@ -1138,11 +1160,56 @@ fun PantallaPanel(
                                             respuestaSeleccionada = null
                                             puntaje = 0
                                             respondidas = false
+                                            esPrueba1 = false
                                             pantallaEstudiante = "contenido"
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text("Estudiar unidad")
+                                    }
+                                }
+                            }
+
+                            // Prueba 1 exclusiva de Matemática / Operaciones básicas.
+                            if (
+                                usuario.rol == "Estudiante" &&
+                                asignatura.nombre == "Matemática" &&
+                                unidad.titulo == "Operaciones básicas"
+                            ) {
+                                Spacer(Modifier.height(4.dp))
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                ) {
+                                    Column(Modifier.padding(16.dp)) {
+                                        Text(
+                                            "Prueba 1",
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        Spacer(Modifier.height(6.dp))
+
+                                        Text(
+                                            "Realiza la prueba de operaciones básicas. La calificación definitiva estará disponible en una futura actualización."
+                                        )
+
+                                        Spacer(Modifier.height(12.dp))
+
+                                        Button(
+                                            onClick = {
+                                                unidadSeleccionada = unidad
+                                                reiniciarActividad(esPrueba = true)
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Comenzar Prueba 1")
+                                        }
                                     }
                                 }
                             }
@@ -1207,7 +1274,8 @@ fun PantallaPanel(
                         val pregunta = unidad.preguntas[preguntaActual]
 
                         Text(
-                            "Actividad: ${unidad.titulo}",
+                            if (esPrueba1) "Prueba 1: ${unidad.titulo}"
+                            else "Actividad: ${unidad.titulo}",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
@@ -1348,7 +1416,11 @@ fun PantallaPanel(
                     Spacer(Modifier.height(16.dp))
 
                     Text(
-                        text = "¡Actividad completada!",
+                        text = if (esPrueba1) {
+                            "¡Prueba 1 completada!"
+                        } else {
+                            "¡Actividad completada!"
+                        },
                         fontSize = 27.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
@@ -1393,29 +1465,64 @@ fun PantallaPanel(
                                 color = MaterialTheme.colorScheme.primary
                             )
 
-                            Text("Puntaje obtenido")
+                            Text(
+                                if (esPrueba1) "Puntaje de práctica"
+                                else "Puntaje obtenido"
+                            )
                         }
                     }
 
                     Spacer(Modifier.height(20.dp))
 
-                    Text(
-                        text = when {
-                            porcentaje == 100 ->
-                                "¡Excelente! Respondiste todas las preguntas correctamente."
-                            porcentaje >= 60 ->
-                                "¡Buen trabajo! Sigue practicando para mejorar tu resultado."
-                            else ->
-                                "¡Sigue aprendiendo! Puedes repasar el contenido e intentarlo nuevamente."
-                        },
-                        fontSize = 16.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    if (esPrueba1) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(18.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    "Calificación pendiente",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
+                                )
+
+                                Spacer(Modifier.height(8.dp))
+
+                                Text(
+                                    "Tu calificación definitiva aún no está disponible. Esta funcionalidad estará disponible en una futura actualización.",
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = when {
+                                porcentaje == 100 ->
+                                    "¡Excelente! Respondiste todas las preguntas correctamente."
+                                porcentaje >= 60 ->
+                                    "¡Buen trabajo! Sigue practicando para mejorar tu resultado."
+                                else ->
+                                    "¡Sigue aprendiendo! Puedes repasar el contenido e intentarlo nuevamente."
+                            },
+                            fontSize = 16.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
 
                     Spacer(Modifier.height(24.dp))
 
                     Button(
-                        onClick = { reiniciarActividad() },
+                        onClick = {
+                            reiniciarActividad(esPrueba = esPrueba1)
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Repetir actividad")
@@ -1430,6 +1537,7 @@ fun PantallaPanel(
                             respuestaSeleccionada = null
                             puntaje = 0
                             respondidas = false
+                            esPrueba1 = false
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -1445,6 +1553,7 @@ fun PantallaPanel(
                             respuestaSeleccionada = null
                             puntaje = 0
                             respondidas = false
+                            esPrueba1 = false
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {

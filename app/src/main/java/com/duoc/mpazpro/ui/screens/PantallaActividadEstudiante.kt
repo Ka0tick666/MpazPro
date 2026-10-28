@@ -19,9 +19,13 @@ fun PantallaActividadEstudiante(
     maxIntentosPermitidos: Int,
     onRespuestaSeleccionada: (opcion: Int, esCorrecta: Boolean) -> Unit
 ) {
-    if (actividad.esPruebaFinal && intentosRealizados >= maxIntentosPermitidos) {
+    if (actividad.esPruebaFinal &&
+        intentosRealizados >= maxIntentosPermitidos
+    ) {
         Box(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -34,22 +38,40 @@ fun PantallaActividadEstudiante(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = actividad.titulo, style = MaterialTheme.typography.headlineMedium)
+        Text(
+            text = actividad.titulo,
+            style = MaterialTheme.typography.headlineMedium
+        )
 
-        // Reproductor de Audio
-        AudioPlayerButton(audioResName = actividad.audioResName)
+        // Reproductor de audio
+        AudioPlayerButton(
+            audioResName = actividad.audioResName
+        )
 
-        Text(text = actividad.instruccionTexto, fontSize = 20.sp, modifier = Modifier.padding(vertical = 16.dp))
+        Text(
+            text = actividad.instruccionTexto,
+            fontSize = 20.sp,
+            modifier = Modifier.padding(vertical = 16.dp)
+        )
 
-        // Alternativas
-        val opciones = listOf(actividad.opcionA, actividad.opcionB, actividad.opcionC)
+        // Alternativas de respuesta
+        val opciones = listOf(
+            actividad.opcionA,
+            actividad.opcionB,
+            actividad.opcionC
+        )
+
         opciones.forEachIndexed { index, opcionText ->
             Button(
                 onClick = {
-                    val esCorrecta = (index == actividad.respuestaCorrecta)
+                    val esCorrecta =
+                        index == actividad.respuestaCorrecta
+
                     onRespuestaSeleccionada(index, esCorrecta)
                 },
                 modifier = Modifier
@@ -58,8 +80,20 @@ fun PantallaActividadEstudiante(
                     .padding(vertical = 6.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text(text = opcionText, fontSize = 22.sp)
+                Text(
+                    text = opcionText,
+                    fontSize = 22.sp
+                )
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Aviso de funcionalidad pendiente
+        Text(
+            text = "Para una futura actualización",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
