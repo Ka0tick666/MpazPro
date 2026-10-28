@@ -1,4 +1,3 @@
-
 package com.duoc.mpazpro
 
 import android.os.Bundle
@@ -1063,24 +1062,10 @@ fun PantallaPanel(
                         }
                     }
                 }
+            } else if (usuario.rol == "Administrador pedagógico (UTP)") {
+                PantallaUTP(asignaturas = asignaturas)
             } else {
-                Text(
-                    if (usuario.rol == "Docente") {
-                        "Panel docente"
-                    } else {
-                        "Panel de administración pedagógica"
-                    },
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(Modifier.height(12.dp))
-
-                Text(
-                    "Tu cuenta está activa. Las herramientas de gestión para este perfil se implementarán en las siguientes etapas.",
-                    textAlign = TextAlign.Center
-                )
+                PantallaDocente(asignaturas = asignaturas)
             }
         } else {
             OutlinedButton(
