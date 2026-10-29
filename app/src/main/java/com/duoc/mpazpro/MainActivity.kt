@@ -20,6 +20,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.duoc.mpazpro.data.MpazDatabase
+import com.duoc.mpazpro.data.Asignatura
+import com.duoc.mpazpro.data.Unidad
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import com.duoc.mpazpro.data.Usuario
 import com.duoc.mpazpro.data.UsuarioRepository
 import com.duoc.mpazpro.ui.theme.MpazProTheme
@@ -907,6 +911,77 @@ fun PantallaPanel(
 
     val asignaturas = remember { obtenerAsignaturasEducativas() }
 
+    // -----------------------------------------------------
+    // ROOM COMPARTIDO + CARGA INICIAL DEL CONTENIDO EDUCATIVO
+    // -----------------------------------------------------
+    val contextRoom = LocalContext.current
+    val dbRoom = remember(contextRoom) {
+        MpazDatabase.obtenerInstancia(contextRoom)
+    }
+    val asignaturasRoom by dbRoom.asignaturaDao()
+        .obtenerTodas()
+        .collectAsState(initial = emptyList())
+    val asignaturasPublicadasRoom by dbRoom.asignaturaDao()
+        .obtenerPublicadas()
+        .collectAsState(initial = emptyList())
+
+    // Migra el contenido educativo clásico a Room una sola vez por apertura,
+    // sin duplicar asignaturas ni unidades que ya existan.
+    LaunchedEffect(dbRoom) {
+        withContext(Dispatchers.IO) {
+            val asignaturasIniciales = obtenerAsignaturasEducativas()
+            val asignaturaDao = dbRoom.asignaturaDao()
+            val unidadDao = dbRoom.unidadDao()
+
+            for (asignaturaInicial in asignaturasIniciales) {
+                var asignaturaRoom = asignaturaDao.obtenerTodas()
+                    .first()
+                    .firstOrNull {
+                        it.nombre.trim().equals(
+                            asignaturaInicial.nombre.trim(),
+                            ignoreCase = true
+                        )
+                    }
+
+                if (asignaturaRoom == null) {
+                    val idNuevo = asignaturaDao.insertar(
+                        Asignatura(
+                            nombre = asignaturaInicial.nombre,
+                            descripcion = asignaturaInicial.descripcion,
+                            publicada = true
+                        )
+                    )
+                    asignaturaRoom = asignaturaDao.obtenerTodas()
+                        .first()
+                        .firstOrNull { it.idAsignatura == idNuevo }
+                }
+
+                val asignaturaActual = asignaturaRoom ?: continue
+                val titulosExistentes = unidadDao
+                    .obtenerPorAsignatura(asignaturaActual.idAsignatura)
+                    .first()
+                    .map { it.titulo.trim().lowercase() }
+                    .toMutableSet()
+
+                for (unidadInicial in asignaturaInicial.unidades) {
+                    val tituloNormalizado = unidadInicial.titulo.trim().lowercase()
+                    if (tituloNormalizado !in titulosExistentes) {
+                        unidadDao.insertar(
+                            Unidad(
+                                idAsignatura = asignaturaActual.idAsignatura,
+                                titulo = unidadInicial.titulo,
+                                descripcion = unidadInicial.descripcion,
+                                contenido = unidadInicial.contenido,
+                                publicada = asignaturaActual.publicada
+                            )
+                        )
+                        titulosExistentes.add(tituloNormalizado)
+                    }
+                }
+            }
+        }
+    }
+
     fun reiniciarActividad(esPrueba: Boolean = false) {
         preguntaActual = 0
         respuestaSeleccionada = null
@@ -956,6 +1031,16 @@ fun PantallaPanel(
 
             else -> volverAAsignaturas()
         }
+    }
+
+    // El estudiante siempre utiliza Room y solo recibe asignaturas/unidades publicadas.
+    if (usuario.rol == "Estudiante") {
+        PantallaEstudianteRoom(
+            usuario = usuario,
+            asignaturas = asignaturasPublicadasRoom,
+            onCerrarSesion = onCerrarSesion
+        )
+        return
     }
 
     Column(
@@ -1582,5 +1667,246 @@ fun PantallaPanel(
         }
 
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+
+// -----------------------------------------------------
+// PANEL ESTUDIANTE CON DATOS COMPARTIDOS DE ROOM
+// -----------------------------------------------------
+
+@Composable
+private fun PantallaEstudianteRoom(
+    usuario: Usuario,
+    asignaturas: List<Asignatura>,
+    onCerrarSesion: () -> Unit
+) {
+    val context = LocalContext.current
+    val db = remember(context) { MpazDatabase.obtenerInstancia(context) }
+
+    var asignaturaSeleccionada by remember { mutableStateOf<Asignatura?>(null) }
+    var unidadSeleccionada by remember { mutableStateOf<Unidad?>(null) }
+    var vista by remember { mutableStateOf("asignaturas") }
+
+    val unidadesFlow = remember(asignaturaSeleccionada?.idAsignatura) {
+        val id = asignaturaSeleccionada?.idAsignatura
+        if (id == null) flowOf<List<Unidad>>(emptyList()) else db.unidadDao().obtenerPublicadas(id)
+    }
+    val unidades by unidadesFlow.collectAsState(initial = emptyList())
+
+    val contenidoClasico = remember { obtenerAsignaturasEducativas() }
+    val unidadClasica = remember(unidadSeleccionada?.titulo, asignaturaSeleccionada?.nombre) {
+        val nombreAsignatura = asignaturaSeleccionada?.nombre
+        val tituloUnidad = unidadSeleccionada?.titulo
+        contenidoClasico.firstOrNull { it.nombre.equals(nombreAsignatura, true) }
+            ?.unidades?.firstOrNull { it.titulo.equals(tituloUnidad, true) }
+    }
+
+    var indicePregunta by remember { mutableIntStateOf(0) }
+    var respuestaElegida by remember { mutableStateOf<Int?>(null) }
+    var respondida by remember { mutableStateOf(false) }
+    var puntaje by remember { mutableIntStateOf(0) }
+    var esPrueba1 by remember { mutableStateOf(false) }
+
+    fun iniciarPractica(prueba: Boolean) {
+        indicePregunta = 0
+        respuestaElegida = null
+        respondida = false
+        puntaje = 0
+        esPrueba1 = prueba
+        vista = "actividad"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (vista != "asignaturas") {
+            OutlinedButton(
+                onClick = {
+                    when (vista) {
+                        "unidades" -> { vista = "asignaturas"; asignaturaSeleccionada = null }
+                        "contenido" -> vista = "unidades"
+                        "actividad", "resultado" -> vista = if (esPrueba1 || unidadSeleccionada != null) "contenido" else "unidades"
+                        else -> vista = "asignaturas"
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("← Volver") }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        when (vista) {
+            "asignaturas" -> {
+                Icon(Icons.Filled.Book, contentDescription = "Educación", modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+                Text("¡Bienvenido a MPAZ PRO!", fontSize = 25.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(6.dp))
+                Text(usuario.nombre, fontSize = 18.sp)
+                Text(usuario.correo, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(20.dp))
+                Text("Mis asignaturas", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(12.dp))
+
+                if (asignaturas.isEmpty()) {
+                    Text("Por ahora no hay asignaturas publicadas por UTP.", textAlign = TextAlign.Center)
+                } else {
+                    asignaturas.forEach { asignatura ->
+                        Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(asignatura.nombre, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                Text(asignatura.descripcion.ifBlank { "Sin descripción." })
+                                Spacer(Modifier.height(12.dp))
+                                Button(
+                                    onClick = { asignaturaSeleccionada = asignatura; unidadSeleccionada = null; vista = "unidades" },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Ver unidades") }
+                            }
+                        }
+                    }
+                }
+            }
+
+            "unidades" -> {
+                Text(asignaturaSeleccionada?.nombre ?: "Asignatura", fontSize = 25.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(12.dp))
+                if (unidades.isEmpty()) {
+                    Text("Esta asignatura todavía no tiene unidades publicadas.", textAlign = TextAlign.Center)
+                } else {
+                    unidades.forEachIndexed { index, unidad ->
+                        Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text("Unidad ${index + 1}", color = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.height(4.dp))
+                                Text(unidad.titulo, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                                Text(unidad.descripcion.ifBlank { "Sin descripción." })
+                                Spacer(Modifier.height(10.dp))
+                                Button(onClick = { unidadSeleccionada = unidad; vista = "contenido" }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Estudiar unidad")
+                                }
+                                if (asignaturaSeleccionada?.nombre.equals("Matemática", true) && unidad.titulo.equals("Operaciones básicas", true)) {
+                                    Spacer(Modifier.height(6.dp))
+                                    OutlinedButton(
+                                        onClick = { unidadSeleccionada = unidad; iniciarPractica(true) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = contenidoClasico.firstOrNull { it.nombre.equals("Matemática", true) }?.unidades?.any { it.titulo.equals("Operaciones básicas", true) && it.preguntas.isNotEmpty() } == true
+                                    ) { Text("Comenzar Prueba 1") }
+                                    Text("La calificación definitiva estará disponible en una futura actualización.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            "contenido" -> {
+                val unidad = unidadSeleccionada
+                Text(unidad?.titulo ?: "Unidad", fontSize = 25.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(16.dp))
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(20.dp)) {
+                        Text("Aprendamos", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.height(12.dp))
+                        Text(unidad?.contenido?.ifBlank { "Todavía no se ha agregado contenido." } ?: "Sin contenido.", fontSize = 16.sp, lineHeight = 25.sp)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                val tienePreguntas = unidadClasica?.preguntas?.isNotEmpty() == true
+                if (tienePreguntas) {
+                    Button(onClick = { iniciarPractica(false) }, modifier = Modifier.fillMaxWidth()) { Text("Comenzar actividad") }
+                } else {
+                    Text("Esta unidad todavía no tiene una actividad de preguntas asociada.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            "actividad" -> {
+                val preguntas = unidadClasica?.preguntas.orEmpty()
+                if (preguntas.isEmpty()) {
+                    Text("No hay preguntas disponibles para esta unidad.")
+                } else {
+                    val pregunta = preguntas[indicePregunta]
+                    Text(if (esPrueba1) "Prueba 1: ${unidadSeleccionada?.titulo}" else "Actividad: ${unidadSeleccionada?.titulo}", fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Pregunta ${indicePregunta + 1} de ${preguntas.size}", color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(16.dp))
+                    LinearProgressIndicator(progress = { (indicePregunta + 1).toFloat() / preguntas.size }, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(20.dp))
+                    Text(pregunta.enunciado, fontSize = 19.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(12.dp))
+                    pregunta.opciones.forEachIndexed { index, opcion ->
+                        OutlinedButton(
+                            onClick = { if (!respondida) respuestaElegida = index },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                            enabled = !respondida,
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = if (respuestaElegida == index) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
+                        ) { Text(opcion, modifier = Modifier.fillMaxWidth()) }
+                    }
+                    if (respondida) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(if (respuestaElegida == pregunta.indiceCorrecto) "¡Correcto! ${pregunta.explicacion}" else "La respuesta correcta es: ${pregunta.opciones[pregunta.indiceCorrecto]}. ${pregunta.explicacion}", color = MaterialTheme.colorScheme.primary)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            if (!respondida) {
+                                if (respuestaElegida == pregunta.indiceCorrecto) puntaje++
+                                respondida = true
+                            } else if (indicePregunta < preguntas.lastIndex) {
+                                indicePregunta++
+                                respuestaElegida = null
+                                respondida = false
+                            } else {
+                                vista = "resultado"
+                            }
+                        },
+                        enabled = respondida || respuestaElegida != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (!respondida) "Comprobar respuesta" else if (indicePregunta < preguntas.lastIndex) "Siguiente pregunta" else "Ver resultado") }
+                }
+            }
+
+            "resultado" -> {
+                val total = unidadClasica?.preguntas?.size ?: 0
+                val porcentaje = if (total > 0) puntaje * 100 / total else 0
+                Icon(Icons.Filled.Book, contentDescription = "Actividad completada", modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(12.dp))
+                Text(if (esPrueba1) "¡Prueba 1 completada!" else "¡Actividad completada!", fontSize = 25.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(16.dp))
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("$puntaje de $total", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                        Text("Respuestas correctas")
+                        Spacer(Modifier.height(8.dp))
+                        Text("$porcentaje%", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(if (esPrueba1) "Puntaje de práctica" else "Puntaje obtenido")
+                    }
+                }
+                if (esPrueba1) {
+                    Spacer(Modifier.height(16.dp))
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Calificación pendiente", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Tu calificación definitiva aún no está disponible. Esta funcionalidad estará disponible en una futura actualización.", textAlign = TextAlign.Center)
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.height(12.dp))
+                    Text(if (porcentaje == 100) "¡Excelente! Respondiste todas las preguntas correctamente." else if (porcentaje >= 60) "¡Buen trabajo! Sigue practicando para mejorar tu resultado." else "¡Sigue aprendiendo! Puedes repasar el contenido e intentarlo nuevamente.", textAlign = TextAlign.Center)
+                }
+                Spacer(Modifier.height(20.dp))
+                Button(onClick = { iniciarPractica(esPrueba1) }, modifier = Modifier.fillMaxWidth()) { Text("Repetir actividad") }
+                OutlinedButton(onClick = { vista = "contenido"; indicePregunta = 0; respuestaElegida = null; respondida = false; puntaje = 0; esPrueba1 = false }, modifier = Modifier.fillMaxWidth()) { Text("Repasar contenido") }
+                OutlinedButton(onClick = { vista = "unidades"; indicePregunta = 0; respuestaElegida = null; respondida = false; puntaje = 0; esPrueba1 = false }, modifier = Modifier.fillMaxWidth()) { Text("Volver a las unidades") }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        OutlinedButton(onClick = onCerrarSesion, modifier = Modifier.fillMaxWidth()) { Text("Cerrar sesión") }
+        Spacer(Modifier.height(12.dp))
     }
 }
