@@ -13,19 +13,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
 import com.duoc.mpazpro.data.MpazDatabase
-import com.duoc.mpazpro.data.Asignatura
-import com.duoc.mpazpro.data.Unidad
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.first
 import com.duoc.mpazpro.data.Usuario
 import com.duoc.mpazpro.data.UsuarioRepository
+import com.duoc.mpazpro.ui.screens.PantallaActividadEstudiante
 import com.duoc.mpazpro.ui.theme.MpazProTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -103,8 +100,7 @@ class MainActivity : ComponentActivity() {
                                                 pantalla = "panel"
                                             }
                                         } catch (e: Exception) {
-                                            mensaje =
-                                                "No se pudo iniciar sesión. Inténtalo nuevamente."
+                                            mensaje = "No se pudo iniciar sesión. Inténtalo nuevamente."
                                         } finally {
                                             cargando = false
                                         }
@@ -146,8 +142,7 @@ class MainActivity : ComponentActivity() {
                                                 pantalla = "login"
                                             }
                                         } catch (e: Exception) {
-                                            mensaje =
-                                                "No se pudo crear la cuenta. Inténtalo nuevamente."
+                                            mensaje = "No se pudo crear la cuenta. Inténtalo nuevamente."
                                         } finally {
                                             cargando = false
                                         }
@@ -296,9 +291,7 @@ fun PantallaLogin(
         if (mensaje.isNotBlank()) {
             Text(
                 text = mensaje,
-                color = if (
-                    mensaje.contains("bienvenido", ignoreCase = true)
-                ) {
+                color = if (mensaje.contains("bienvenido", ignoreCase = true)) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.error
@@ -452,9 +445,7 @@ fun PantallaRegistro(
         if (mensaje.isNotBlank()) {
             Text(
                 text = mensaje,
-                color = if (
-                    mensaje.contains("correctamente", ignoreCase = true)
-                ) {
+                color = if (mensaje.contains("correctamente", ignoreCase = true)) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.error
@@ -827,56 +818,10 @@ fun obtenerAsignaturasEducativas(): List<AsignaturaEducativa> {
                                 "Para investigar el pasado",
                                 "Para predecir exactamente el futuro",
                                 "Para reemplazar toda investigación",
-                                "Para evitar estudiar acontecimientos"
+                                "Para ignorar la historia"
                             ),
                             0,
-                            "Las fuentes aportan evidencias para investigar el pasado."
-                        )
-                    )
-                ),
-                UnidadEducativa(
-                    titulo = "Línea de tiempo",
-                    descripcion = "Ordena acontecimientos cronológicamente.",
-                    contenido = """
-                        Una línea de tiempo representa acontecimientos en el orden en que ocurrieron.
-
-                        La cronología permite ordenar hechos desde los más antiguos hasta los más recientes, o al revés.
-
-                        Las fechas y los intervalos ayudan a comparar cuándo ocurrieron distintos acontecimientos y cuánto tiempo transcurrió entre ellos.
-                    """.trimIndent(),
-                    preguntas = listOf(
-                        PreguntaEducativa(
-                            "¿Qué representa una línea de tiempo?",
-                            listOf(
-                                "Acontecimientos ordenados temporalmente",
-                                "Solo lugares geográficos",
-                                "Únicamente personajes ficticios",
-                                "Una lista sin orden"
-                            ),
-                            0,
-                            "La línea de tiempo organiza acontecimientos según cuándo ocurrieron."
-                        ),
-                        PreguntaEducativa(
-                            "¿Qué significa ordenar cronológicamente?",
-                            listOf(
-                                "Ordenar por tamaño",
-                                "Ordenar según el tiempo",
-                                "Ordenar por color",
-                                "Ordenar al azar"
-                            ),
-                            1,
-                            "La cronología organiza acontecimientos en relación con el tiempo."
-                        ),
-                        PreguntaEducativa(
-                            "¿Qué información ayuda a ubicar un acontecimiento?",
-                            listOf(
-                                "Su fecha",
-                                "Su color favorito",
-                                "Su peso siempre",
-                                "Su temperatura siempre"
-                            ),
-                            0,
-                            "La fecha ayuda a identificar cuándo ocurrió un acontecimiento."
+                            "Permiten comprender acontecimientos pasados."
                         )
                     )
                 )
@@ -886,1027 +831,69 @@ fun obtenerAsignaturasEducativas(): List<AsignaturaEducativa> {
 }
 
 // -----------------------------------------------------
-// PANEL DEL USUARIO Y NAVEGACIÓN EDUCATIVA
+// PANTALLA PANEL (ENRUTADOR POR ROL)
 // -----------------------------------------------------
 
 @Composable
 fun PantallaPanel(
-    modifier: Modifier = Modifier,
     usuario: Usuario,
     onCerrarSesion: () -> Unit
 ) {
-    var pantallaEstudiante by remember { mutableStateOf("asignaturas") }
-    var asignaturaSeleccionada by remember {
-        mutableStateOf<AsignaturaEducativa?>(null)
-    }
-    var unidadSeleccionada by remember {
-        mutableStateOf<UnidadEducativa?>(null)
-    }
-
-    var preguntaActual by remember { mutableIntStateOf(0) }
-    var respuestaSeleccionada by remember { mutableStateOf<Int?>(null) }
-    var puntaje by remember { mutableIntStateOf(0) }
-    var respondidas by remember { mutableStateOf(false) }
-    var esPrueba1 by remember { mutableStateOf(false) }
-
-    val asignaturas = remember { obtenerAsignaturasEducativas() }
-
-    // -----------------------------------------------------
-    // ROOM COMPARTIDO + CARGA INICIAL DEL CONTENIDO EDUCATIVO
-    // -----------------------------------------------------
-    val contextRoom = LocalContext.current
-    val dbRoom = remember(contextRoom) {
-        MpazDatabase.obtenerInstancia(contextRoom)
-    }
-    val asignaturasRoom by dbRoom.asignaturaDao()
-        .obtenerTodas()
-        .collectAsState(initial = emptyList())
-    val asignaturasPublicadasRoom by dbRoom.asignaturaDao()
-        .obtenerPublicadas()
-        .collectAsState(initial = emptyList())
-
-    // Migra el contenido educativo clásico a Room una sola vez por apertura,
-    // sin duplicar asignaturas ni unidades que ya existan.
-    LaunchedEffect(dbRoom) {
-        withContext(Dispatchers.IO) {
-            val asignaturasIniciales = obtenerAsignaturasEducativas()
-            val asignaturaDao = dbRoom.asignaturaDao()
-            val unidadDao = dbRoom.unidadDao()
-
-            for (asignaturaInicial in asignaturasIniciales) {
-                var asignaturaRoom = asignaturaDao.obtenerTodas()
-                    .first()
-                    .firstOrNull {
-                        it.nombre.trim().equals(
-                            asignaturaInicial.nombre.trim(),
-                            ignoreCase = true
-                        )
-                    }
-
-                if (asignaturaRoom == null) {
-                    val idNuevo = asignaturaDao.insertar(
-                        Asignatura(
-                            nombre = asignaturaInicial.nombre,
-                            descripcion = asignaturaInicial.descripcion,
-                            publicada = true
-                        )
-                    )
-                    asignaturaRoom = asignaturaDao.obtenerTodas()
-                        .first()
-                        .firstOrNull { it.idAsignatura == idNuevo }
-                }
-
-                val asignaturaActual = asignaturaRoom ?: continue
-                val titulosExistentes = unidadDao
-                    .obtenerPorAsignatura(asignaturaActual.idAsignatura)
-                    .first()
-                    .map { it.titulo.trim().lowercase() }
-                    .toMutableSet()
-
-                for (unidadInicial in asignaturaInicial.unidades) {
-                    val tituloNormalizado = unidadInicial.titulo.trim().lowercase()
-                    if (tituloNormalizado !in titulosExistentes) {
-                        unidadDao.insertar(
-                            Unidad(
-                                idAsignatura = asignaturaActual.idAsignatura,
-                                titulo = unidadInicial.titulo,
-                                descripcion = unidadInicial.descripcion,
-                                contenido = unidadInicial.contenido,
-                                publicada = asignaturaActual.publicada
-                            )
-                        )
-                        titulosExistentes.add(tituloNormalizado)
-                    }
-                }
-            }
-        }
-    }
-
-    fun reiniciarActividad(esPrueba: Boolean = false) {
-        preguntaActual = 0
-        respuestaSeleccionada = null
-        puntaje = 0
-        respondidas = false
-        esPrueba1 = esPrueba
-        pantallaEstudiante = "actividad"
-    }
-
-    fun volverAAsignaturas() {
-        pantallaEstudiante = "asignaturas"
-        asignaturaSeleccionada = null
-        unidadSeleccionada = null
-        preguntaActual = 0
-        respuestaSeleccionada = null
-        puntaje = 0
-        respondidas = false
-        esPrueba1 = false
-    }
-
-    fun volverUnaPantalla() {
-        when (pantallaEstudiante) {
-            "unidades" -> volverAAsignaturas()
-
-            "contenido" -> {
-                pantallaEstudiante = "unidades"
-                respuestaSeleccionada = null
-                respondidas = false
-            }
-
-            "actividad" -> {
-                pantallaEstudiante = "contenido"
-                respuestaSeleccionada = null
-                respondidas = false
-            }
-
-            "resultado" -> {
-                pantallaEstudiante = "asignaturas"
-                asignaturaSeleccionada = null
-                unidadSeleccionada = null
-                preguntaActual = 0
-                respuestaSeleccionada = null
-                puntaje = 0
-                respondidas = false
-                esPrueba1 = false
-            }
-
-            else -> volverAAsignaturas()
-        }
-    }
-
-    // El estudiante siempre utiliza Room y solo recibe asignaturas/unidades publicadas.
-    if (usuario.rol == "Estudiante") {
-        PantallaEstudianteRoom(
-            usuario = usuario,
-            asignaturas = asignaturasPublicadasRoom,
-            onCerrarSesion = onCerrarSesion
-        )
-        return
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        if (pantallaEstudiante == "asignaturas") {
-            Spacer(Modifier.height(12.dp))
-
-            Icon(
-                imageVector = Icons.Filled.Book,
-                contentDescription = "Educación",
-                modifier = Modifier.size(56.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-
-            Text(
-                text = "¡Bienvenido a MPAZ PRO!",
-                fontSize = 25.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(Modifier.height(8.dp))
-            Text(usuario.nombre, fontSize = 18.sp)
-
-            Text(
-                usuario.correo,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(
-                        "Tu perfil",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                    Text("Rol: ${usuario.rol}")
-                }
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            if (usuario.rol == "Estudiante") {
-                Text(
-                    "Mis asignaturas",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                Text(
-                    "Selecciona una asignatura para comenzar.",
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(Modifier.height(16.dp))
-
-                asignaturas.forEach { asignatura ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp)
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(
-                                asignatura.nombre,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Spacer(Modifier.height(4.dp))
-                            Text(asignatura.descripcion)
-
-                            Spacer(Modifier.height(8.dp))
-
-                            Text(
-                                "${asignatura.unidades.size} unidades disponibles",
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            Spacer(Modifier.height(10.dp))
-
-                            Button(
-                                onClick = {
-                                    asignaturaSeleccionada = asignatura
-                                    unidadSeleccionada = null
-                                    preguntaActual = 0
-                                    respuestaSeleccionada = null
-                                    puntaje = 0
-                                    respondidas = false
-                                    esPrueba1 = false
-                                    pantallaEstudiante = "unidades"
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Ver unidades")
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Conectar las pantallas funcionales existentes.
-                when (usuario.rol) {
-                    "Docente" -> {
-                        PantallaDocente(
-                            asignaturas = asignaturas
-                        )
-                    }
-
-                    "Administrador pedagógico (UTP)" -> {
-                        PantallaUTP(
-                            asignaturas = asignaturas
-                        )
-                    }
-
-                    else -> {
-                        Text(
-                            "Rol no reconocido.",
-                            fontSize = 18.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-        } else {
-            OutlinedButton(
-                onClick = { volverUnaPantalla() },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    when (pantallaEstudiante) {
-                        "unidades" -> "← Volver a las asignaturas"
-                        "contenido" -> "← Volver a las unidades"
-                        "actividad" -> "← Volver al contenido"
-                        "resultado" -> "← Volver a las asignaturas"
-                        else -> "← Volver"
-                    }
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            when (pantallaEstudiante) {
-                "unidades" -> {
-                    val asignatura = asignaturaSeleccionada
-
-                    if (asignatura != null) {
-                        Text(
-                            asignatura.nombre,
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-
-                        Text(
-                            "Selecciona una unidad para aprender.",
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(Modifier.height(16.dp))
-
-                        asignatura.unidades.forEachIndexed { indice, unidad ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp)
-                            ) {
-                                Column(Modifier.padding(16.dp)) {
-                                    Text(
-                                        "Unidad ${indice + 1}",
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-
-                                    Spacer(Modifier.height(4.dp))
-
-                                    Text(
-                                        unidad.titulo,
-                                        fontSize = 19.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(unidad.descripcion)
-
-                                    Spacer(Modifier.height(12.dp))
-
-                                    Button(
-                                        onClick = {
-                                            unidadSeleccionada = unidad
-                                            preguntaActual = 0
-                                            respuestaSeleccionada = null
-                                            puntaje = 0
-                                            respondidas = false
-                                            esPrueba1 = false
-                                            pantallaEstudiante = "contenido"
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Estudiar unidad")
-                                    }
-                                }
-                            }
-
-                            // Prueba 1 exclusiva de Matemática / Operaciones básicas.
-                            if (
-                                usuario.rol == "Estudiante" &&
-                                asignatura.nombre == "Matemática" &&
-                                unidad.titulo == "Operaciones básicas"
-                            ) {
-                                Spacer(Modifier.height(4.dp))
-
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 6.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                                    )
-                                ) {
-                                    Column(Modifier.padding(16.dp)) {
-                                        Text(
-                                            "Prueba 1",
-                                            fontSize = 20.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-
-                                        Spacer(Modifier.height(6.dp))
-
-                                        Text(
-                                            "Realiza la prueba de operaciones básicas. La calificación definitiva estará disponible en una futura actualización."
-                                        )
-
-                                        Spacer(Modifier.height(12.dp))
-
-                                        Button(
-                                            onClick = {
-                                                unidadSeleccionada = unidad
-                                                reiniciarActividad(esPrueba = true)
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text("Comenzar Prueba 1")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                "contenido" -> {
-                    val unidad = unidadSeleccionada
-
-                    if (unidad != null) {
-                        Text(
-                            unidad.titulo,
-                            fontSize = 25.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(Modifier.height(20.dp))
-
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(20.dp)) {
-                                Text(
-                                    "Aprendamos",
-                                    fontSize = 19.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-
-                                Spacer(Modifier.height(12.dp))
-
-                                Text(
-                                    unidad.contenido,
-                                    fontSize = 16.sp,
-                                    lineHeight = 25.sp
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(20.dp))
-
-                        Text(
-                            "¿Listo para practicar lo aprendido?",
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(Modifier.height(12.dp))
-
-                        Button(
-                            onClick = { reiniciarActividad() },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Comenzar actividad")
-                        }
-                    }
-                }
-
-                "actividad" -> {
-                    val unidad = unidadSeleccionada
-
-                    if (unidad != null && unidad.preguntas.isNotEmpty()) {
-                        val pregunta = unidad.preguntas[preguntaActual]
-
-                        Text(
-                            if (esPrueba1) "Prueba 1: ${unidad.titulo}"
-                            else "Actividad: ${unidad.titulo}",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-
-                        Text(
-                            "Pregunta ${preguntaActual + 1} de ${unidad.preguntas.size}",
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
-                        Spacer(Modifier.height(16.dp))
-
-                        LinearProgressIndicator(
-                            progress = {
-                                (preguntaActual + 1).toFloat() /
-                                        unidad.preguntas.size
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(Modifier.height(24.dp))
-
-                        Text(
-                            pregunta.enunciado,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-
-                        Spacer(Modifier.height(16.dp))
-
-                        pregunta.opciones.forEachIndexed { indice, opcion ->
-                            OutlinedButton(
-                                onClick = {
-                                    if (!respondidas) {
-                                        respuestaSeleccionada = indice
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                enabled = !respondidas,
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor =
-                                        if (respuestaSeleccionada == indice) {
-                                            MaterialTheme.colorScheme.secondaryContainer
-                                        } else {
-                                            MaterialTheme.colorScheme.surface
-                                        }
-                                )
-                            ) {
-                                Text(
-                                    opcion,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 6.dp)
-                                )
-                            }
-                        }
-
-                        if (respondidas) {
-                            Spacer(Modifier.height(12.dp))
-
-                            Text(
-                                text = if (
-                                    respuestaSeleccionada == pregunta.indiceCorrecto
-                                ) {
-                                    "¡Correcto! ${pregunta.explicacion}"
-                                } else {
-                                    "La respuesta correcta es: " +
-                                            "${pregunta.opciones[pregunta.indiceCorrecto]}. " +
-                                            pregunta.explicacion
-                                },
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        Spacer(Modifier.height(20.dp))
-
-                        Button(
-                            onClick = {
-                                if (!respondidas) {
-                                    val seleccion = respuestaSeleccionada
-
-                                    if (seleccion != null) {
-                                        if (seleccion == pregunta.indiceCorrecto) {
-                                            puntaje++
-                                        }
-
-                                        respondidas = true
-                                    }
-                                } else {
-                                    if (preguntaActual < unidad.preguntas.lastIndex) {
-                                        preguntaActual++
-                                        respuestaSeleccionada = null
-                                        respondidas = false
-                                    } else {
-                                        pantallaEstudiante = "resultado"
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = respondidas || respuestaSeleccionada != null
-                        ) {
-                            Text(
-                                when {
-                                    !respondidas -> "Comprobar respuesta"
-                                    preguntaActual < unidad.preguntas.lastIndex ->
-                                        "Siguiente pregunta"
-                                    else -> "Ver resultado"
-                                }
-                            )
-                        }
-                    } else {
-                        Text("No hay preguntas disponibles para esta unidad.")
-                    }
-                }
-
-                "resultado" -> {
-                    val unidad = unidadSeleccionada
-                    val total = unidad?.preguntas?.size ?: 0
-                    val porcentaje = if (total > 0) {
-                        (puntaje * 100) / total
-                    } else {
-                        0
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Icon(
-                        imageVector = Icons.Filled.Book,
-                        contentDescription = "Actividad completada",
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-
-                    Spacer(Modifier.height(16.dp))
-
-                    Text(
-                        text = if (esPrueba1) {
-                            "¡Prueba 1 completada!"
-                        } else {
-                            "¡Actividad completada!"
-                        },
-                        fontSize = 27.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    Text(
-                        text = unidad?.titulo ?: "Actividad",
-                        fontSize = 18.sp,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(Modifier.height(24.dp))
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "$puntaje de $total",
-                                fontSize = 32.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Text("Respuestas correctas")
-
-                            Spacer(Modifier.height(16.dp))
-
-                            Text(
-                                text = "$porcentaje%",
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            Text(
-                                if (esPrueba1) "Puntaje de práctica"
-                                else "Puntaje obtenido"
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(20.dp))
-
-                    if (esPrueba1) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(18.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    "Calificación pendiente",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center
-                                )
-
-                                Spacer(Modifier.height(8.dp))
-
-                                Text(
-                                    "Tu calificación definitiva aún no está disponible. Esta funcionalidad estará disponible en una futura actualización.",
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    } else {
-                        Text(
-                            text = when {
-                                porcentaje == 100 ->
-                                    "¡Excelente! Respondiste todas las preguntas correctamente."
-                                porcentaje >= 60 ->
-                                    "¡Buen trabajo! Sigue practicando para mejorar tu resultado."
-                                else ->
-                                    "¡Sigue aprendiendo! Puedes repasar el contenido e intentarlo nuevamente."
-                            },
-                            fontSize = 16.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    Spacer(Modifier.height(24.dp))
-
-                    Button(
-                        onClick = {
-                            reiniciarActividad(esPrueba = esPrueba1)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Repetir actividad")
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            pantallaEstudiante = "contenido"
-                            preguntaActual = 0
-                            respuestaSeleccionada = null
-                            puntaje = 0
-                            respondidas = false
-                            esPrueba1 = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Repasar contenido")
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            pantallaEstudiante = "unidades"
-                            preguntaActual = 0
-                            respuestaSeleccionada = null
-                            puntaje = 0
-                            respondidas = false
-                            esPrueba1 = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Volver a las unidades")
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    OutlinedButton(
-                        onClick = { volverAAsignaturas() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Volver a las asignaturas")
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(28.dp))
-
-        OutlinedButton(
-            onClick = onCerrarSesion,
-            modifier = Modifier.fillMaxWidth()
+    val asignaturasEducativas = remember { obtenerAsignaturasEducativas() }
+    val rolNormalizado = usuario.rol.trim().uppercase()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Cerrar sesión")
-        }
-
-        Spacer(Modifier.height(16.dp))
-    }
-}
-
-
-// -----------------------------------------------------
-// PANEL ESTUDIANTE CON DATOS COMPARTIDOS DE ROOM
-// -----------------------------------------------------
-
-@Composable
-private fun PantallaEstudianteRoom(
-    usuario: Usuario,
-    asignaturas: List<Asignatura>,
-    onCerrarSesion: () -> Unit
-) {
-    val context = LocalContext.current
-    val db = remember(context) { MpazDatabase.obtenerInstancia(context) }
-
-    var asignaturaSeleccionada by remember { mutableStateOf<Asignatura?>(null) }
-    var unidadSeleccionada by remember { mutableStateOf<Unidad?>(null) }
-    var vista by remember { mutableStateOf("asignaturas") }
-
-    val unidadesFlow = remember(asignaturaSeleccionada?.idAsignatura) {
-        val id = asignaturaSeleccionada?.idAsignatura
-        if (id == null) flowOf<List<Unidad>>(emptyList()) else db.unidadDao().obtenerPublicadas(id)
-    }
-    val unidades by unidadesFlow.collectAsState(initial = emptyList())
-
-    val contenidoClasico = remember { obtenerAsignaturasEducativas() }
-    val unidadClasica = remember(unidadSeleccionada?.titulo, asignaturaSeleccionada?.nombre) {
-        val nombreAsignatura = asignaturaSeleccionada?.nombre
-        val tituloUnidad = unidadSeleccionada?.titulo
-        contenidoClasico.firstOrNull { it.nombre.equals(nombreAsignatura, true) }
-            ?.unidades?.firstOrNull { it.titulo.equals(tituloUnidad, true) }
-    }
-
-    var indicePregunta by remember { mutableIntStateOf(0) }
-    var respuestaElegida by remember { mutableStateOf<Int?>(null) }
-    var respondida by remember { mutableStateOf(false) }
-    var puntaje by remember { mutableIntStateOf(0) }
-    var esPrueba1 by remember { mutableStateOf(false) }
-
-    fun iniciarPractica(prueba: Boolean) {
-        indicePregunta = 0
-        respuestaElegida = null
-        respondida = false
-        puntaje = 0
-        esPrueba1 = prueba
-        vista = "actividad"
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        if (vista != "asignaturas") {
-            OutlinedButton(
-                onClick = {
-                    when (vista) {
-                        "unidades" -> { vista = "asignaturas"; asignaturaSeleccionada = null }
-                        "contenido" -> vista = "unidades"
-                        "actividad", "resultado" -> vista = if (esPrueba1 || unidadSeleccionada != null) "contenido" else "unidades"
-                        else -> vista = "asignaturas"
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("← Volver") }
-            Spacer(Modifier.height(16.dp))
-        }
-
-        when (vista) {
-            "asignaturas" -> {
-                Icon(Icons.Filled.Book, contentDescription = "Educación", modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
-                Text("¡Bienvenido a MPAZ PRO!", fontSize = 25.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(6.dp))
-                Text(usuario.nombre, fontSize = 18.sp)
-                Text(usuario.correo, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(20.dp))
-                Text("Mis asignaturas", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(12.dp))
-
-                if (asignaturas.isEmpty()) {
-                    Text("Por ahora no hay asignaturas publicadas por UTP.", textAlign = TextAlign.Center)
-                } else {
-                    asignaturas.forEach { asignatura ->
-                        Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text(asignatura.nombre, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(4.dp))
-                                Text(asignatura.descripcion.ifBlank { "Sin descripción." })
-                                Spacer(Modifier.height(12.dp))
-                                Button(
-                                    onClick = { asignaturaSeleccionada = asignatura; unidadSeleccionada = null; vista = "unidades" },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { Text("Ver unidades") }
-                            }
-                        }
-                    }
-                }
-            }
-
-            "unidades" -> {
-                Text(asignaturaSeleccionada?.nombre ?: "Asignatura", fontSize = 25.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(12.dp))
-                if (unidades.isEmpty()) {
-                    Text("Esta asignatura todavía no tiene unidades publicadas.", textAlign = TextAlign.Center)
-                } else {
-                    unidades.forEachIndexed { index, unidad ->
-                        Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text("Unidad ${index + 1}", color = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.height(4.dp))
-                                Text(unidad.titulo, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(6.dp))
-                                Text(unidad.descripcion.ifBlank { "Sin descripción." })
-                                Spacer(Modifier.height(10.dp))
-                                Button(onClick = { unidadSeleccionada = unidad; vista = "contenido" }, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Estudiar unidad")
-                                }
-                                if (asignaturaSeleccionada?.nombre.equals("Matemática", true) && unidad.titulo.equals("Operaciones básicas", true)) {
-                                    Spacer(Modifier.height(6.dp))
-                                    OutlinedButton(
-                                        onClick = { unidadSeleccionada = unidad; iniciarPractica(true) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        enabled = contenidoClasico.firstOrNull { it.nombre.equals("Matemática", true) }?.unidades?.any { it.titulo.equals("Operaciones básicas", true) && it.preguntas.isNotEmpty() } == true
-                                    ) { Text("Comenzar Prueba 1") }
-                                    Text("La calificación definitiva estará disponible en una futura actualización.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            "contenido" -> {
-                val unidad = unidadSeleccionada
-                Text(unidad?.titulo ?: "Unidad", fontSize = 25.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(16.dp))
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(20.dp)) {
-                        Text("Aprendamos", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.height(12.dp))
-                        Text(unidad?.contenido?.ifBlank { "Todavía no se ha agregado contenido." } ?: "Sin contenido.", fontSize = 16.sp, lineHeight = 25.sp)
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-                val tienePreguntas = unidadClasica?.preguntas?.isNotEmpty() == true
-                if (tienePreguntas) {
-                    Button(onClick = { iniciarPractica(false) }, modifier = Modifier.fillMaxWidth()) { Text("Comenzar actividad") }
-                } else {
-                    Text("Esta unidad todavía no tiene una actividad de preguntas asociada.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            "actividad" -> {
-                val preguntas = unidadClasica?.preguntas.orEmpty()
-                if (preguntas.isEmpty()) {
-                    Text("No hay preguntas disponibles para esta unidad.")
-                } else {
-                    val pregunta = preguntas[indicePregunta]
-                    Text(if (esPrueba1) "Prueba 1: ${unidadSeleccionada?.titulo}" else "Actividad: ${unidadSeleccionada?.titulo}", fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Pregunta ${indicePregunta + 1} de ${preguntas.size}", color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(16.dp))
-                    LinearProgressIndicator(progress = { (indicePregunta + 1).toFloat() / preguntas.size }, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(20.dp))
-                    Text(pregunta.enunciado, fontSize = 19.sp, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(12.dp))
-                    pregunta.opciones.forEachIndexed { index, opcion ->
-                        OutlinedButton(
-                            onClick = { if (!respondida) respuestaElegida = index },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                            enabled = !respondida,
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = if (respuestaElegida == index) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
-                        ) { Text(opcion, modifier = Modifier.fillMaxWidth()) }
-                    }
-                    if (respondida) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(if (respuestaElegida == pregunta.indiceCorrecto) "¡Correcto! ${pregunta.explicacion}" else "La respuesta correcta es: ${pregunta.opciones[pregunta.indiceCorrecto]}. ${pregunta.explicacion}", color = MaterialTheme.colorScheme.primary)
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = {
-                            if (!respondida) {
-                                if (respuestaElegida == pregunta.indiceCorrecto) puntaje++
-                                respondida = true
-                            } else if (indicePregunta < preguntas.lastIndex) {
-                                indicePregunta++
-                                respuestaElegida = null
-                                respondida = false
-                            } else {
-                                vista = "resultado"
-                            }
-                        },
-                        enabled = respondida || respuestaElegida != null,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (!respondida) "Comprobar respuesta" else if (indicePregunta < preguntas.lastIndex) "Siguiente pregunta" else "Ver resultado") }
-                }
-            }
-
-            "resultado" -> {
-                val total = unidadClasica?.preguntas?.size ?: 0
-                val porcentaje = if (total > 0) puntaje * 100 / total else 0
-                Icon(Icons.Filled.Book, contentDescription = "Actividad completada", modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(12.dp))
-                Text(if (esPrueba1) "¡Prueba 1 completada!" else "¡Actividad completada!", fontSize = 25.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(16.dp))
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("$puntaje de $total", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                        Text("Respuestas correctas")
-                        Spacer(Modifier.height(8.dp))
-                        Text("$porcentaje%", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Text(if (esPrueba1) "Puntaje de práctica" else "Puntaje obtenido")
-                    }
-                }
-                if (esPrueba1) {
-                    Spacer(Modifier.height(16.dp))
-                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Calificación pendiente", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                            Spacer(Modifier.height(8.dp))
-                            Text("Tu calificación definitiva aún no está disponible. Esta funcionalidad estará disponible en una futura actualización.", textAlign = TextAlign.Center)
-                        }
-                    }
-                } else {
-                    Spacer(Modifier.height(12.dp))
-                    Text(if (porcentaje == 100) "¡Excelente! Respondiste todas las preguntas correctamente." else if (porcentaje >= 60) "¡Buen trabajo! Sigue practicando para mejorar tu resultado." else "¡Sigue aprendiendo! Puedes repasar el contenido e intentarlo nuevamente.", textAlign = TextAlign.Center)
-                }
-                Spacer(Modifier.height(20.dp))
-                Button(onClick = { iniciarPractica(esPrueba1) }, modifier = Modifier.fillMaxWidth()) { Text("Repetir actividad") }
-                OutlinedButton(onClick = { vista = "contenido"; indicePregunta = 0; respuestaElegida = null; respondida = false; puntaje = 0; esPrueba1 = false }, modifier = Modifier.fillMaxWidth()) { Text("Repasar contenido") }
-                OutlinedButton(onClick = { vista = "unidades"; indicePregunta = 0; respuestaElegida = null; respondida = false; puntaje = 0; esPrueba1 = false }, modifier = Modifier.fillMaxWidth()) { Text("Volver a las unidades") }
+            Text(
+                text = "Hola, ${usuario.nombre}",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            OutlinedButton(onClick = onCerrarSesion) {
+                Text("Cerrar sesión")
             }
         }
 
-        Spacer(Modifier.height(24.dp))
-        OutlinedButton(onClick = onCerrarSesion, modifier = Modifier.fillMaxWidth()) { Text("Cerrar sesión") }
-        Spacer(Modifier.height(12.dp))
+        HorizontalDivider()
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            when {
+                rolNormalizado.contains("ESTUDIANTE") -> {
+                    PantallaActividadEstudiante(
+                        asignaturas = asignaturasEducativas
+                    )
+                }
+
+                rolNormalizado.contains("DOCENTE") -> {
+                    PantallaDocente(
+                        asignaturas = asignaturasEducativas
+                    )
+                }
+
+                rolNormalizado.contains("UTP") || rolNormalizado.contains("ADMINISTRADOR") -> {
+                    PantallaUTP(
+                        asignaturas = asignaturasEducativas
+                    )
+                }
+
+                else -> {
+                    Text(
+                        text = "Rol no reconocido ($rolNormalizado). Contacta al administrador.",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+            }
+        }
     }
 }

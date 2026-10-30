@@ -45,7 +45,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun PantallaUTP(asignaturas: List<AsignaturaEducativa>) {
+fun PantallaUTP(asignaturas: List<AsignaturaEducativa> = emptyList()) {
     val context = LocalContext.current
 
     val database = remember(context) {
@@ -234,7 +234,7 @@ fun PantallaUTP(asignaturas: List<AsignaturaEducativa>) {
                 )
 
                 Text(
-                    "Asignaturas iniciales del sistema: ${asignaturas.size}"
+                    "Asignaturas iniciales del sistema: ${asignaturas?.size ?: 0}"
                 )
 
                 Text(
@@ -504,6 +504,7 @@ fun PantallaUTP(asignaturas: List<AsignaturaEducativa>) {
         }
 
         // Revisión del material inicial
+        // --- REVISIÓN DEL MATERIAL INICIAL (AGRUPADO Y COLAPSABLE) ---
         Spacer(Modifier.height(20.dp))
 
         Text(
@@ -541,158 +542,184 @@ fun PantallaUTP(asignaturas: List<AsignaturaEducativa>) {
             }
         }
 
-        val unidadesIniciales = asignaturas.flatMap { asignatura ->
-            asignatura.unidades.map { unidad ->
-                Triple(
-                    asignatura.nombre,
-                    unidad,
-                    "${asignatura.nombre}::${unidad.titulo}"
-                )
-            }
-        }.filter { (nombre, unidad, clave) ->
-            filtro == "Todos" ||
-                    revisionActual(
-                        clave,
-                        nombre,
-                        unidad.titulo
-                    ).estado == filtro
-        }
+        Spacer(Modifier.height(10.dp))
 
-        unidadesIniciales.forEach { (nombre, unidad, clave) ->
-            val revision = revisionActual(
-                clave,
-                nombre,
-                unidad.titulo
-            )
+        // Agrupamos las unidades por nombre de asignatura
+        val asignaturasAgrupadas = asignaturas.map { asignatura ->
+            val unidadesFiltradas = asignatura.unidades.filter { unidad ->
+                val clave = "${asignatura.nombre}::${unidad.titulo}"
+                filtro == "Todos" || revisionActual(clave, asignatura.nombre, unidad.titulo).estado == filtro
+            }
+            asignatura.nombre to unidadesFiltradas
+        }.filter { it.second.isNotEmpty() } // Solo mostramos asignaturas que tengan unidades visibles según el filtro
+
+        asignaturasAgrupadas.forEach { (nombreAsignatura, unidades) ->
+            var desplegado by remember { mutableStateOf(false) }
 
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 5.dp)
+                    .padding(vertical = 6.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
             ) {
                 Column(Modifier.padding(12.dp)) {
-                    Text(
-                        text = nombre,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    Text(
-                        text = unidad.titulo,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(unidad.descripcion)
-
-                    Spacer(Modifier.height(6.dp))
-
-                    Text("Preguntas: ${unidad.preguntas.size}")
-
-                    Text(
-                        text = "Estado: ${revision.estado}",
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    OutlinedTextField(
-                        value = revision.observacion,
-                        onValueChange = { texto ->
-                            guardarRevision(
-                                revisionActual(
-                                    clave,
-                                    nombre,
-                                    unidad.titulo
-                                ).copy(observacion = texto)
-                            )
-                        },
+                    // Cabecera desplegable de la asignatura
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Observaciones UTP") },
-                        minLines = 2
-                    )
-
-                    Spacer(Modifier.height(6.dp))
-
-                    Button(
-                        onClick = {
-                            cambiarEstado(
-                                clave,
-                                nombre,
-                                unidad.titulo,
-                                "Autorizado",
-                                "Contenido autorizado"
-                            )
-                        },
-                        enabled = revision.estado != "Publicado",
-                        modifier = Modifier.fillMaxWidth()
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                     ) {
-                        Text("Autorizar contenido")
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            val observacion = revisionActual(
-                                clave,
-                                nombre,
-                                unidad.titulo
-                            ).observacion.trim()
-
-                            if (observacion.isBlank()) {
-                                aviso =
-                                    "Escribe una observación antes de solicitar correcciones."
-                            } else {
-                                cambiarEstado(
-                                    clave,
-                                    nombre,
-                                    unidad.titulo,
-                                    "Deshabilitado",
-                                    "Corrección solicitada: $observacion"
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Solicitar correcciones")
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            if (revision.estado == "Autorizado") {
-                                cambiarEstado(
-                                    clave,
-                                    nombre,
-                                    unidad.titulo,
-                                    "Publicado",
-                                    "Contenido publicado"
-                                )
-                            } else {
-                                aviso =
-                                    "Primero debes autorizar el contenido."
-                            }
-                        },
-                        enabled = revision.estado == "Autorizado",
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Publicar contenido")
-                    }
-
-                    revision.historial
-                        .split("\n")
-                        .filter { it.isNotBlank() }
-                        .forEach { entrada ->
+                        Column {
                             Text(
-                                text = entrada,
-                                fontSize = 12.sp
+                                text = nombreAsignatura,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "${unidades.size} unidad(es) disponible(s)",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+
+                        TextButton(onClick = { desplegado = !desplegado }) {
+                            Text(if (desplegado) "▲ Ocultar" else "▼ Ver unidades")
+                        }
+                    }
+
+                    // Contenido comprimido (solo se muestra al hacer clic en "Ver unidades")
+                    if (desplegado) {
+                        Spacer(Modifier.height(10.dp))
+
+                        unidades.forEach { unidad ->
+                            val clave = "$nombreAsignatura::${unidad.titulo}"
+                            val revision = revisionActual(clave, nombreAsignatura, unidad.titulo)
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                )
+                            ) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = unidad.titulo,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
+
+                                    Text(unidad.descripcion)
+
+                                    Spacer(Modifier.height(6.dp))
+
+                                    Text("Preguntas: ${unidad.preguntas.size}")
+
+                                    Text(
+                                        text = "Estado: ${revision.estado}",
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    OutlinedTextField(
+                                        value = revision.observacion,
+                                        onValueChange = { texto ->
+                                            guardarRevision(
+                                                revisionActual(
+                                                    clave,
+                                                    nombreAsignatura,
+                                                    unidad.titulo
+                                                ).copy(observacion = texto)
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text("Observaciones UTP") },
+                                        minLines = 2
+                                    )
+
+                                    Spacer(Modifier.height(6.dp))
+
+                                    Button(
+                                        onClick = {
+                                            cambiarEstado(
+                                                clave,
+                                                nombreAsignatura,
+                                                unidad.titulo,
+                                                "Autorizado",
+                                                "Contenido autorizado"
+                                            )
+                                        },
+                                        enabled = revision.estado != "Publicado",
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Autorizar contenido")
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val observacion = revisionActual(
+                                                clave,
+                                                nombreAsignatura,
+                                                unidad.titulo
+                                            ).observacion.trim()
+
+                                            if (observacion.isBlank()) {
+                                                aviso =
+                                                    "Escribe una observación antes de solicitar correcciones."
+                                            } else {
+                                                cambiarEstado(
+                                                    clave,
+                                                    nombreAsignatura,
+                                                    unidad.titulo,
+                                                    "Deshabilitado",
+                                                    "Corrección solicitada: $observacion"
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Solicitar correcciones")
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (revision.estado == "Autorizado") {
+                                                cambiarEstado(
+                                                    clave,
+                                                    nombreAsignatura,
+                                                    unidad.titulo,
+                                                    "Publicado",
+                                                    "Contenido publicado"
+                                                )
+                                            } else {
+                                                aviso =
+                                                    "Primero debes autorizar el contenido."
+                                            }
+                                        },
+                                        enabled = revision.estado == "Autorizado",
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Publicar contenido")
+                                    }
+
+                                    revision.historial
+                                        .split("\n")
+                                        .filter { it.isNotBlank() }
+                                        .forEach { entrada ->
+                                            Text(
+                                                text = entrada,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        }
-
-        if (aviso.isNotBlank()) {
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                text = aviso,
-                color = MaterialTheme.colorScheme.primary
-            )
         }
     }
 
